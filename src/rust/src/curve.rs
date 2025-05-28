@@ -75,7 +75,7 @@ impl InternalCurveCandidate {
 
 /// Represents a Bézier curve, similar to the Fortran `CurveData` type.
 /// This is primarily for internal Rust usage and testing.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct CurveData {
     pub start: f64,
     pub end: f64,
