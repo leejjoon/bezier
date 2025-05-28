@@ -117,7 +117,7 @@ def extension_modules():
             numpy_include_dir(),
             os.path.join(install_prefix, "include"),
         ],
-        libraries=["bezier"],
+        libraries=["bezier_rust_ffi"],
         library_dirs=[rpath],
         define_macros=[("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION")],
         extra_compile_args=[],
