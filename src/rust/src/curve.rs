@@ -1150,15 +1150,21 @@ pub unsafe extern "C" fn BEZ_compute_length(
     let mut abserr = 0.0;
     let limit_dqagse = 50; 
 
-    rust_dqagse(
-        vec_size_closure,
-        0.0, 1.0,
-        SQRT_PREC, SQRT_PREC, 
-        limit_dqagse,
-        length, 
-        &mut abserr, 
-        error_val, 
-    );
+    // Safe because we're converting raw pointers to mutable references for the duration of the call
+    // and we know the pointers are valid and properly aligned
+    unsafe {
+        rust_dqagse(
+            vec_size_closure,
+            0.0, 
+            1.0,
+            SQRT_PREC, 
+            SQRT_PREC, 
+            limit_dqagse,
+            &mut *length, 
+            &mut abserr, 
+            &mut *error_val, 
+        );
+    }
 }
 
 // Note: `curves_equal` and `subdivide_curve` from Fortran are not C-bound

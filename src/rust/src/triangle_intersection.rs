@@ -45,9 +45,9 @@ pub const TRIANGLE_CONTAINED_SECOND: c_int = 2;
 
 // Other constants
 pub const MAX_LOCATE_SUBDIVISIONS_TRIANGLE: c_int = 20; 
-pub const LOCATE_EPS_TRIANGLE: f64 = 0.5f64.powi(47); // approx 7.105427357601002e-15
+pub const LOCATE_EPS_TRIANGLE: f64 = 7.105427357601002e-15; // 0.5^47
 pub const MAX_EDGES: c_int = 10; // Used in interior_combine for loop bound
-pub const ALMOST_TANGENT: f64 = 0.5f64.powi(50); // approx 8.881784197001252e-16
+pub const ALMOST_TANGENT: f64 = 8.881784197001252e-16; // 0.5^50
 
 
 #[repr(C)]
