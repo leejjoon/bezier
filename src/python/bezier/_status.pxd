@@ -13,7 +13,7 @@
 """Cython wrapper for ``status.f90``."""
 
 
-cdef extern from "bezier/status.h":
+cdef extern from "../../rust/target/include/bezier_rust_ffi.h":
     cdef enum Status:
         SUCCESS = 0
         BAD_MULTIPLICITY = 1

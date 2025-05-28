@@ -10,51 +10,49 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Cython wrapper for ``curve.f90``."""
+"""Cython wrapper for Rust FFI for curve module."""
 
+ctypedef unsigned char uint8_t
 
-from libcpp cimport bool as bool_t
-
-
-cdef extern from "bezier/curve.h":
-    void evaluate_curve_barycentric "BEZ_evaluate_curve_barycentric" (
-        const int* num_nodes, const int* dimension,
-        const double* nodes, const int* num_vals, const double* lambda1,
+cdef extern from "../../rust/target/include/bezier_rust_ffi.h":
+    void BEZ_evaluate_curve_barycentric(
+        int num_nodes, int dimension,
+        const double* nodes, int num_vals, const double* lambda1,
         const double* lambda2, double* evaluated)
-    void evaluate_multi "BEZ_evaluate_multi" (
-        const int* num_nodes, const int* dimension,
-        const double* nodes, const int* num_vals, const double* s_vals,
+    void BEZ_evaluate_multi(
+        int num_nodes, int dimension,
+        const double* nodes, int num_vals, const double* s_vals,
         double* evaluated)
-    void specialize_curve "BEZ_specialize_curve" (
-        const int* num_nodes, const int* dimension,
-        const double* nodes, const double* start, const double* end,
+    void BEZ_specialize_curve(
+        int num_nodes, int dimension,
+        const double* nodes, double start_s, double end_s, # Changed start and end to value
         double* new_nodes)
-    void evaluate_hodograph "BEZ_evaluate_hodograph" (
-        const double* s, const int* num_nodes,
-        const int* dimension, const double* nodes, double* hodograph)
-    void subdivide_nodes_curve "BEZ_subdivide_nodes_curve" (
-        const int* num_nodes, const int* dimension,
+    void BEZ_evaluate_hodograph(
+        double s, int num_nodes, # s by value
+        int dimension, const double* nodes, double* hodograph)
+    void BEZ_subdivide_nodes_curve(
+        int num_nodes, int dimension,
         const double* nodes, double* left_nodes, double* right_nodes)
-    void newton_refine_curve "BEZ_newton_refine_curve" (
-        const int* num_nodes, const int* dimension,
-        const double* nodes, const double* point, const double* s,
+    void BEZ_newton_refine_curve(
+        int num_nodes, int dimension,
+        const double* nodes, const double* point, double s, # s by value
         double* updated_s)
-    void locate_point_curve "BEZ_locate_point_curve" (
-        const int* num_nodes, const int* dimension,
+    void BEZ_locate_point_curve(
+        int num_nodes, int dimension,
         const double* nodes, const double* point, double* s_approx)
-    void elevate_nodes_curve "BEZ_elevate_nodes_curve" (
-        const int* num_nodes, const int* dimension,
+    void BEZ_elevate_nodes_curve(
+        int num_nodes, int dimension,
         const double* nodes, double* elevated)
-    void get_curvature "BEZ_get_curvature" (
-        const int* num_nodes, const double* nodes,
-        const double* tangent_vec, const double* s, double* curvature)
-    void reduce_pseudo_inverse "BEZ_reduce_pseudo_inverse" (
-        const int* num_nodes, const int* dimension,
-        const double* nodes, double* reduced, bool_t* not_implemented)
-    void full_reduce "BEZ_full_reduce" (
-        const int* num_nodes, const int* dimension,
+    void BEZ_get_curvature(
+        int num_nodes, const double* nodes, # dimension is implicitly 2
+        const double* tangent_vec, double s, double* curvature) # s by value
+    void BEZ_reduce_pseudo_inverse(
+        int num_nodes, int dimension,
+        const double* nodes, double* reduced, uint8_t* not_implemented)
+    void BEZ_full_reduce(
+        int num_nodes, int dimension,
         const double* nodes, int* num_reduced_nodes, double* reduced,
-        bool_t* not_implemented)
-    void compute_length "BEZ_compute_length" (
-        const int* num_nodes, const int* dimension,
+        uint8_t* not_implemented)
+    void BEZ_compute_length(
+        int num_nodes, int dimension,
         const double* nodes, double* length, int* error_val)

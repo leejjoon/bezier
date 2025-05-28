@@ -10,30 +10,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Cython wrapper for ``helpers.f90``."""
+"""Cython wrapper for Rust FFI for helpers."""
 
+ctypedef unsigned char uint8_t
 
-from libcpp cimport bool as bool_t
-
-
-cdef extern from "bezier/helpers.h":
-    void cross_product "BEZ_cross_product" (
+cdef extern from "../../rust/target/include/bezier_rust_ffi.h":
+    void BEZ_cross_product(
         const double* vec0, const double* vec1, double* result)
-    void bbox "BEZ_bbox" (
-        const int* num_nodes, const double* nodes, double* left,
+    void BEZ_bbox(
+        int num_nodes, const double* nodes, double* left,
         double* right, double* bottom, double* top)
-    void wiggle_interval "BEZ_wiggle_interval" (
-        const double* value, double* result, bool_t* success)
-    void contains_nd "BEZ_contains_nd" (
-        const int* num_nodes, const int* dimension,
-        const double* nodes, const double* point, bool_t* predicate)
-    bool_t vector_close "BEZ_vector_close" (
-        int* num_values, const double* vec1, const double* vec2,
-        const double* eps)
-    bool_t in_interval "BEZ_in_interval" (
-        const double* value, const double* start, const double* end)
-    void simple_convex_hull "BEZ_simple_convex_hull" (
-        int* num_points, const double* points, int* polygon_size, double* polygon)
-    void polygon_collide "BEZ_polygon_collide" (
-        const int* polygon_size1, const double* polygon1,
-        const int* polygon_size2, const double* polygon2, bool_t* collision)
+    void BEZ_wiggle_interval(
+        double value, double* result, uint8_t* success)
+    void BEZ_contains_nd(
+        int num_nodes, int dimension,
+        const double* nodes, const double* point, uint8_t* predicate)
+    uint8_t BEZ_vector_close(
+        int num_values, const double* vec1, const double* vec2,
+        double eps)
+    uint8_t BEZ_in_interval(
+        double value, double start, double end_) # 'end' is a keyword in Cython, Rust uses 'end_' or similar if C maps 'end'
+    void BEZ_simple_convex_hull(
+        int num_points, const double* points, int* polygon_size, double* polygon)
+    void BEZ_polygon_collide(
+        int polygon_size1, const double* polygon1,
+        int polygon_size2, const double* polygon2, uint8_t* collision)

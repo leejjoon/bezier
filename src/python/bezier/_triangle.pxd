@@ -10,48 +10,46 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Cython wrapper for ``triangle.f90``."""
+"""Cython wrapper for Rust FFI for triangle module."""
 
+ctypedef unsigned char uint8_t
 
-from libcpp cimport bool as bool_t
-
-
-cdef extern from "bezier/triangle.h":
-    void de_casteljau_one_round "BEZ_de_casteljau_one_round" (
-        const int* num_nodes, const int* dimension,
-        const double* nodes, const int* degree, const double* lambda1,
-        const double* lambda2, const double* lambda3, double* new_nodes)
-    void evaluate_barycentric "BEZ_evaluate_barycentric" (
-        const int* num_nodes, const int* dimension,
-        const double* nodes, const int* degree, const double* lambda1,
-        const double* lambda2, const double* lambda3, double* point)
-    void evaluate_barycentric_multi "BEZ_evaluate_barycentric_multi" (
-        const int* num_nodes, const int* dimension,
-        const double* nodes, const int* degree, const int* num_vals,
+cdef extern from "../../rust/target/include/bezier_rust_ffi.h":
+    void BEZ_de_casteljau_one_round(
+        int num_nodes_total, int dimension, # num_nodes in Fortran was num_nodes_total here
+        const double* nodes, int degree, double lambda1,
+        double lambda2, double lambda3, double* new_nodes)
+    void BEZ_evaluate_barycentric(
+        int num_nodes, int dimension,
+        const double* nodes, int degree, double lambda1,
+        double lambda2, double lambda3, double* point)
+    void BEZ_evaluate_barycentric_multi(
+        int num_nodes, int dimension,
+        const double* nodes, int degree, int num_vals,
         const double* param_vals, double* evaluated)
-    void evaluate_cartesian_multi "BEZ_evaluate_cartesian_multi" (
-        const int* num_nodes, const int* dimension,
-        const double* nodes, const int* degree, const int* num_vals,
+    void BEZ_evaluate_cartesian_multi(
+        int num_nodes, int dimension,
+        const double* nodes, int degree, int num_vals,
         const double* param_vals, double* evaluated)
-    void jacobian_both "BEZ_jacobian_both" (
-        const int* num_nodes, const int* dimension,
-        const double* nodes, const int* degree, double* new_nodes)
-    void jacobian_det "BEZ_jacobian_det" (
-        const int* num_nodes, const double* nodes,
-        const int* degree, const int* num_vals, const double* param_vals,
+    void BEZ_jacobian_both(
+        int num_nodes, int dimension, # num_nodes here is for the original triangle
+        const double* nodes, int degree, double* new_nodes)
+    void BEZ_jacobian_det( # Assuming dimension is 2, matching Rust FFI
+        int num_nodes, const double* nodes,
+        int degree, int num_vals, const double* param_vals,
         double* evaluated)
-    void specialize_triangle "BEZ_specialize_triangle" (
-        const int* num_nodes, const int* dimension,
-        const double* nodes, const int* degree, const double* weights_a,
+    void BEZ_specialize_triangle( 
+        int num_nodes, int dimension,
+        const double* nodes, int degree, const double* weights_a,
         const double* weights_b, const double* weights_c, double* specialized)
-    void subdivide_nodes_triangle "BEZ_subdivide_nodes_triangle" (
-        const int* num_nodes, const int* dimension,
-        const double* nodes, const int* degree, double* nodes_a, double* nodes_b,
+    void BEZ_subdivide_nodes_triangle( 
+        int num_nodes, int dimension,
+        const double* nodes, int degree, double* nodes_a, double* nodes_b,
         double* nodes_c, double* nodes_d)
-    void compute_edge_nodes "BEZ_compute_edge_nodes" (
-        const int* num_nodes, const int* dimension,
-        const double* nodes, const int* degree, double* nodes1, double* nodes2,
+    void BEZ_compute_edge_nodes(
+        int num_nodes, int dimension,
+        const double* nodes, int degree, double* nodes1, double* nodes2,
         double* nodes3)
-    void compute_area "BEZ_compute_area" (
-        int* num_edges, int* sizes,
-        const double* const* nodes_pointers, double* area, bool_t* not_implemented)
+    void BEZ_compute_area( # Matches the Rust FFI for BEZ_compute_area
+        int num_edges, const int* sizes, 
+        const double* const* nodes_pointers, double* area, int* error_code)
