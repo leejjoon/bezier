@@ -39,7 +39,17 @@ pub const LOCATE_INVALID: f64 = -2.0;
 struct InternalCurveCandidate {
     start_param: f64,
     end_param: f64,
-    nodes: Vec<f64>, 
+    nodes: Vec<f64>, // Stores nodes in column-major order if dimension > 1, matching Fortran.
+                     // For dimension D and N nodes, layout is [n1d1, n1d2, ..., n1dD, n2d1, ..., nNdD]
+                     // However, the get_node_val/set_node_val helpers assume nodes(dim_idx, node_idx)
+                     // which means nodes are stored as [n1d1, n2d1, ..., nNd1, n1d2, ..., nNd2, ...]
+                     // The current helpers are: node_idx * dimension + dim_idx
+                     // This is row-major for nodes if we consider nodes as (num_nodes x dimension) matrix.
+                     // Fortran nodes(dimension, num_nodes) is column-major.
+                     // nodes(d,n) in Fortran is at nodes_ptr + (n-1)*dimension + (d-1)
+                     // Let's stick to the current get/set_node_val which implies nodes are laid out
+                     // as a sequence of nodes, each node being a 'dimension'-sized block.
+                     // [node1_dim1, node1_dim2, ..., node1_dimD, node2_dim1, ...]
 }
 
 impl InternalCurveCandidate {
@@ -47,7 +57,7 @@ impl InternalCurveCandidate {
         InternalCurveCandidate {
             start_param: 0.0,
             end_param: 0.0,
-            nodes: vec![0.0; num_nodes * dimension],
+            nodes: vec![0.0; num_nodes * dimension], // num_nodes * dimension elements
         }
     }
     fn new_from_nodes(
@@ -63,21 +73,157 @@ impl InternalCurveCandidate {
     }
 }
 
+/// Represents a Bézier curve, similar to the Fortran `CurveData` type.
+/// This is primarily for internal Rust usage and testing.
+#[derive(Debug, PartialEq)]
+pub struct CurveData {
+    pub start: f64,
+    pub end: f64,
+    /// Nodes of the curve, stored in column-major layout.
+    /// `nodes[d][n]` where `d` is dimension index, `n` is node index.
+    /// For FFI compatibility and matching Fortran, if nodes were a raw pointer,
+    /// they'd be `nodes(dimension, num_nodes)`.
+    /// Here, we'll store them flat, compatible with `get_node_val`/`set_node_val`.
+    /// The flat layout is: n1d1, n1d2, ..., n1dim, n2d1, n2d2, ..., n_num_nodes_dim.
+    /// This corresponds to `nodes[node_idx * dimension + dim_idx]`.
+    pub nodes: Vec<f64>,
+    pub num_nodes: usize,
+    pub dimension: usize,
+}
+
+impl CurveData {
+    /// Creates a new `CurveData` instance.
+    ///
+    /// # Panics
+    /// Panics if `nodes.len()` is not equal to `num_nodes * dimension`.
+    pub fn new(start: f64, end: f64, nodes_vec: Vec<f64>, num_nodes: usize, dimension: usize) -> Self {
+        if num_nodes == 0 && nodes_vec.is_empty() {
+            // Allow empty nodes if num_nodes is 0
+        } else {
+            assert_eq!(
+                nodes_vec.len(),
+                num_nodes * dimension,
+                "Nodes vector length must be num_nodes * dimension"
+            );
+        }
+        CurveData {
+            start,
+            end,
+            nodes: nodes_vec,
+            num_nodes,
+            dimension,
+        }
+    }
+
+    /// Checks if two `CurveData` instances are equal, similar to Fortran's `curves_equal`.
+    pub fn curves_equal(&self, other: &CurveData) -> bool {
+        if self.start != other.start || self.end != other.end {
+            return false;
+        }
+        if self.num_nodes != other.num_nodes || self.dimension != other.dimension {
+            // This check is not in Fortran's curves_equal, but makes sense.
+            // Fortran relies on shape(nodes) being same.
+            return false;
+        }
+        // The Fortran version implicitly checks allocated status and shape.
+        // Here, Vec handles allocation, and num_nodes/dimension define shape.
+        self.nodes == other.nodes
+    }
+
+    /// Subdivides the curve at s=0.5 into two new curves.
+    /// Similar to Fortran's `subdivide_curve`.
+    ///
+    /// # Panics
+    /// Panics if `dimension` or `num_nodes` is 0, unless `num_nodes` is 0 and nodes vec is empty.
+    pub fn subdivide_curve(&self) -> (CurveData, CurveData) {
+        if self.num_nodes == 0 {
+            assert!(self.nodes.is_empty(), "Nodes should be empty if num_nodes is 0");
+             let empty_curve = CurveData::new(self.start, self.start, vec![], 0, self.dimension);
+             let empty_curve_end = CurveData::new(self.end, self.end, vec![], 0, self.dimension);
+             // Fortran subdivide_curve doesn't explicitly handle num_nodes=0, but
+             // subdivide_nodes would just return if num_nodes=0.
+             // Here we adjust start/end for left/right.
+             if self.start == self.end { // Special case for zero-length interval
+                return (empty_curve.clone(), empty_curve);
+             } else {
+                let mid_param = 0.5 * (self.start + self.end);
+                return (
+                    CurveData::new(self.start, mid_param, vec![], 0, self.dimension),
+                    CurveData::new(mid_param, self.end, vec![], 0, self.dimension),
+                );
+             }
+        }
+        assert!(self.dimension > 0, "Dimension must be greater than 0 for subdivide");
+
+
+        let mut left_nodes_vec = vec![0.0; self.num_nodes * self.dimension];
+        let mut right_nodes_vec = vec![0.0; self.num_nodes * self.dimension];
+
+        unsafe {
+            BEZ_subdivide_nodes_curve(
+                self.num_nodes as c_int,
+                self.dimension as c_int,
+                self.nodes.as_ptr(),
+                left_nodes_vec.as_mut_ptr(),
+                right_nodes_vec.as_mut_ptr(),
+            );
+        }
+
+        let mid_param = 0.5 * (self.start + self.end);
+        let left_curve = CurveData::new(
+            self.start,
+            mid_param,
+            left_nodes_vec,
+            self.num_nodes,
+            self.dimension,
+        );
+        let right_curve = CurveData::new(
+            mid_param,
+            self.end,
+            right_nodes_vec,
+            self.num_nodes,
+            self.dimension,
+        );
+
+        (left_curve, right_curve)
+    }
+}
+
 
 // Helper for column-major access: get an element nodes(dim_idx, node_idx)
+// This actually implements row-major access if thinking of nodes as (num_nodes x dimension)
+// or column-major if thinking of (dimension x num_nodes) where node_idx is the column.
+// Fortran nodes(dimension, num_nodes) -> access is nodes(d, n).
+// If nodes pointer is base, then address is base + (n-1)*dimension + (d-1).
+// Current C/Rust: base + node_idx * dimension + dim_idx. This is consistent.
 #[inline]
+/// # Safety
+/// Caller must ensure that `nodes` points to a valid memory block containing at least
+/// `(node_idx * dimension + dim_idx + 1)` elements of `c_double`.
+/// `dimension` must not be zero if `node_idx > 0` or `dim_idx > 0` to prevent out-of-bounds.
+/// Typically, `dim_idx` should be less than `dimension`.
 unsafe fn get_node_val(nodes: *const c_double, dimension: usize, node_idx: usize, dim_idx: usize) -> f64 {
     *nodes.add(node_idx * dimension + dim_idx)
 }
 
 // Helper for column-major access: set an element nodes(dim_idx, node_idx) = val
 #[inline]
+/// # Safety
+/// Caller must ensure that `nodes` points to a valid, mutable memory block containing at least
+/// `(node_idx * dimension + dim_idx + 1)` elements of `c_double`.
+/// `dimension` must not be zero if `node_idx > 0` or `dim_idx > 0`.
+/// Typically, `dim_idx` should be less than `dimension`.
 unsafe fn set_node_val(nodes: *mut c_double, dimension: usize, node_idx: usize, dim_idx: usize, val: f64) {
     *nodes.add(node_idx * dimension + dim_idx) = val;
 }
 
 // Helper to copy a column (node) from src_nodes at src_node_idx to dest_col_ptr
 #[inline]
+/// # Safety
+/// Caller must ensure `src_nodes` points to a valid memory block containing at least
+/// `(src_node_idx * dimension + dimension)` elements.
+/// Caller must ensure `dest_col_ptr` points to a valid, mutable memory block of at least `dimension` elements.
+/// `dimension` must accurately reflect the number of doubles to copy.
 unsafe fn get_node_col(
     src_nodes: *const c_double, 
     dimension: usize, 
@@ -93,6 +239,11 @@ unsafe fn get_node_col(
 
 // Helper to copy src_col_ptr into a column (node) at dest_node_idx in dest_nodes
 #[inline]
+/// # Safety
+/// Caller must ensure `dest_nodes` points to a valid, mutable memory block containing at least
+/// `(dest_node_idx * dimension + dimension)` elements.
+/// Caller must ensure `src_col_ptr` points to a valid memory block of at least `dimension` elements.
+/// `dimension` must accurately reflect the number of doubles to copy.
 unsafe fn set_node_col(
     dest_nodes: *mut c_double,
     dimension: usize,
@@ -107,6 +258,12 @@ unsafe fn set_node_col(
 }
 
 // Internal Rust equivalent of Fortran's `evaluate_curve_vs`
+/// # Safety
+/// Caller must ensure:
+/// - `nodes` points to readable memory for `dimension * num_nodes` doubles.
+/// - `lambda1` and `lambda2` point to readable memory for `num_vals` doubles.
+/// - `evaluated` points to writable memory for `dimension * num_vals` doubles.
+/// - `dimension`, `num_nodes`, `num_vals` correctly describe the sizes of these buffers.
 unsafe fn evaluate_curve_vs_internal(
     num_nodes: usize,
     dimension: usize,
@@ -163,6 +320,13 @@ unsafe fn evaluate_curve_vs_internal(
 }
 
 // Internal Rust equivalent of Fortran's `evaluate_curve_de_casteljau`
+/// # Safety
+/// Caller must ensure:
+/// - `nodes` points to readable memory for `dimension * num_nodes` doubles.
+/// - `lambda1` and `lambda2` point to readable memory for `num_vals` doubles.
+/// - `evaluated` points to writable memory for `dimension * num_vals` doubles.
+/// - `dimension`, `num_nodes`, `num_vals` correctly describe the sizes of these buffers.
+/// - If `num_nodes > 1`, `workspace_vec` allocation `dimension * num_vals * (num_nodes - 1)` must succeed.
 unsafe fn evaluate_curve_de_casteljau_internal(
     num_nodes: usize,
     dimension: usize,
@@ -256,6 +420,11 @@ pub unsafe extern "C" fn BEZ_evaluate_multi(
     s_vals: *const c_double, 
     evaluated: *mut c_double, 
 ) {
+    // Safety for BEZ_evaluate_curve_barycentric is handled by its own documentation.
+    // Preconditions for this function:
+    // - num_nodes, dimension, nodes, num_vals, evaluated must meet requirements of BEZ_evaluate_curve_barycentric.
+    // - s_vals must be valid for reading num_vals doubles.
+    // - one_less_s_vec allocation must succeed.
     let nv = num_vals as usize;
     if nv == 0 { return; }
 
@@ -283,6 +452,10 @@ unsafe fn specialize_curve_generic_internal(
     end_s: f64,   
     new_nodes: *mut c_double, 
 ) {
+    // Safety: relies on get_node_val and set_node_val preconditions.
+    // - `nodes` must be valid for reading `dimension * num_nodes` doubles.
+    // - `new_nodes` must be valid for writing `dimension * num_nodes` doubles.
+    // - `workspace_vec` allocation must succeed.
     if num_nodes == 0 { return; }
 
     let block_size = dimension * (num_nodes - 1); 
@@ -349,6 +522,10 @@ unsafe fn specialize_curve_quadratic_internal(
     end_s: f64,
     new_nodes: *mut c_double, 
 ) {
+    // Safety: relies on get_node_val and set_node_val preconditions.
+    // Assumes num_nodes is 3 for this specialized version.
+    // - `nodes` must be valid for reading `dimension * 3` doubles.
+    // - `new_nodes` must be valid for writing `dimension * 3` doubles.
     let minus_start = 1.0 - start_s;
     let minus_end = 1.0 - end_s;
     let prod_both = start_s * end_s;
@@ -385,6 +562,11 @@ pub unsafe extern "C" fn BEZ_specialize_curve(
     end_s: c_double,   
     new_nodes: *mut c_double,
 ) {
+    // Safety: This function dispatches to other unsafe functions.
+    // Preconditions of those functions must be met.
+    // - `nodes` must be valid for reading `dimension * num_nodes` doubles.
+    // - `new_nodes` must be valid for writing `dimension * num_nodes` doubles.
+    // - `num_nodes` and `dimension` must be non-negative and accurately represent the data.
     let nn = num_nodes as usize;
     let dim = dimension as usize;
 
@@ -415,6 +597,14 @@ pub unsafe extern "C" fn BEZ_evaluate_hodograph(
     nodes: *const c_double,
     hodograph: *mut c_double, 
 ) {
+    // Safety:
+    // - `nodes` must be valid for reading `dimension * num_nodes` doubles.
+    // - `hodograph` must be valid for writing `dimension * 1` doubles (if num_nodes >=2)
+    //   or `dimension * 0` (effectively, not written if nn < 2, but still needs to be valid ptr or properly handled).
+    //   The function sets hodograph to 0.0 if nn < 2, so it must be writable for `dim` elements.
+    // - `num_nodes` and `dimension` must be non-negative.
+    // - `first_deriv_vec` allocation must succeed.
+    // - `BEZ_evaluate_multi` preconditions must be met.
     let nn = num_nodes as usize;
     let dim = dimension as usize;
 
@@ -461,6 +651,11 @@ unsafe fn subdivide_nodes_generic_internal(
     left_nodes: *mut c_double,
     right_nodes: *mut c_double,
 ) {
+    // Safety:
+    // - `nodes` must be valid for reading `dimension * num_nodes` doubles.
+    // - `left_nodes` and `right_nodes` must be valid for writing `dimension * num_nodes` doubles.
+    // - `dimension` and `num_nodes` must be accurate.
+    // - `pascals_triangle` allocation must succeed.
     if num_nodes == 0 { return; }
 
     let mut pascals_triangle: Vec<f64> = vec![0.0; num_nodes];
@@ -506,6 +701,10 @@ pub unsafe extern "C" fn BEZ_subdivide_nodes_curve(
     left_nodes: *mut c_double,
     right_nodes: *mut c_double,
 ) {
+    // Safety: This function dispatches to other unsafe functions or handles simple cases.
+    // - `nodes` must be valid for reading `dimension * num_nodes` doubles.
+    // - `left_nodes` and `right_nodes` must be valid for writing `dimension * num_nodes` doubles.
+    // - `num_nodes` and `dimension` must be non-negative and accurately represent the data.
     let nn = num_nodes as usize;
     let dim = dimension as usize;
 
@@ -564,6 +763,13 @@ pub unsafe extern "C" fn BEZ_newton_refine_curve(
     s: c_double,
     updated_s: *mut c_double,
 ) {
+    // Safety:
+    // - `nodes` must be valid for reading `dimension * num_nodes` doubles.
+    // - `point` must be valid for reading `dimension * 1` doubles.
+    // - `updated_s` must be valid for writing 1 double.
+    // - `num_nodes` and `dimension` must be non-negative.
+    // - `BEZ_evaluate_multi` and `BEZ_evaluate_hodograph` preconditions must be met.
+    // - Allocations for `pt_delta_vec` and `derivative_vec` must succeed.
     let dim = dimension as usize;
 
     let mut pt_delta_vec: Vec<f64> = vec![0.0; dim]; 
@@ -618,6 +824,13 @@ unsafe fn split_candidate_internal(
     next_candidate1: &mut InternalCurveCandidate,
     next_candidate2: &mut InternalCurveCandidate,
 ) {
+    // Safety: Relies on BEZ_subdivide_nodes_curve.
+    // - `candidate.nodes.as_ptr()` must be a valid pointer to `num_nodes * dimension` doubles.
+    // - `next_candidate1.nodes.as_mut_ptr()` and `next_candidate2.nodes.as_mut_ptr()` must
+    //   be valid for writing `num_nodes * dimension` doubles.
+    // - `num_nodes` and `dimension` must be accurate.
+    // The `InternalCurveCandidate` struct ensures its `nodes` vec is properly sized,
+    // so `as_ptr` and `as_mut_ptr` should yield valid pointers if the vecs are not empty.
     BEZ_subdivide_nodes_curve(
         num_nodes as c_int,
         dimension as c_int,
@@ -639,6 +852,13 @@ unsafe fn update_candidates_internal(
     current_candidates: &[InternalCurveCandidate], 
     next_candidates_vec: &mut Vec<InternalCurveCandidate>, 
 ) {
+    // Safety: Relies on helpers::BEZ_contains_nd and split_candidate_internal.
+    // - `point_ptr` must be valid for reading `dimension` doubles.
+    // - For each `candidate` in `current_candidates`:
+    //   - `candidate.nodes.as_ptr()` must be valid for `num_nodes * dimension` doubles.
+    //   - `num_nodes` and `dimension` must be accurate.
+    // - `split_candidate_internal` safety relies on its own preconditions regarding
+    //   the new empty candidates created, which should be sound due to `Vec` allocation.
     next_candidates_vec.clear(); 
 
     for candidate in current_candidates {
@@ -680,6 +900,13 @@ pub unsafe extern "C" fn BEZ_locate_point_curve(
     point: *const c_double, 
     s_approx: *mut c_double,
 ) {
+    // Safety:
+    // - `nodes` must be valid for reading `dimension * num_nodes` doubles.
+    // - `point` must be valid for reading `dimension` doubles.
+    // - `s_approx` must be valid for writing 1 double.
+    // - `num_nodes_c` and `dimension_c` must be non-negative and accurate.
+    // - Relies on `update_candidates_internal` and `BEZ_newton_refine_curve` which have their own safety docs.
+    // - `std::slice::from_raw_parts` requires `nodes` to be valid for `num_nodes * dimension` elements.
     let num_nodes = num_nodes_c as usize;
     let dimension = dimension_c as usize;
 
@@ -768,6 +995,11 @@ pub unsafe extern "C" fn BEZ_elevate_nodes_curve(
     nodes: *const c_double,
     elevated: *mut c_double, 
 ) {
+    // Safety:
+    // - `nodes` must be valid for reading `dimension * num_nodes` doubles.
+    // - `elevated` must be valid for writing `dimension * (num_nodes + 1)` doubles.
+    // - `num_nodes_c` and `dimension_c` must be non-negative and accurate.
+    // - Relies on `get_node_val` and `set_node_val` safety conditions.
     let num_nodes = num_nodes_c as usize;
     let dimension = dimension_c as usize;
 
@@ -803,6 +1035,13 @@ pub unsafe extern "C" fn BEZ_get_curvature(
     s: c_double,
     curvature: *mut c_double,
 ) {
+    // Safety:
+    // - `nodes` must be valid for reading `2 * num_nodes` doubles (dimension is fixed to 2).
+    // - `tangent_vec_ptr` must be valid for reading `2` doubles.
+    // - `curvature` must be valid for writing 1 double.
+    // - `num_nodes_c` must be non-negative.
+    // - `work_vec` allocation must succeed.
+    // - `BEZ_evaluate_multi` and `helpers::BEZ_cross_product` preconditions must be met.
     let num_nodes = num_nodes_c as usize;
     let dimension: usize = 2; 
 
@@ -875,6 +1114,12 @@ pub unsafe extern "C" fn BEZ_reduce_pseudo_inverse(
     reduced: *mut c_double, 
     not_implemented: *mut u8, 
 ) {
+    // Safety:
+    // - `nodes` must be valid for reading `dimension * num_nodes` doubles.
+    // - `reduced` must be valid for writing `dimension * (num_nodes - 1)` doubles if reduction is possible.
+    // - `not_implemented` must be valid for writing 1 u8.
+    // - `num_nodes_c`, `dimension_c` must be non-negative and accurate.
+    // - Relies on `get_node_val` and `set_node_val` safety.
     let num_nodes = num_nodes_c as usize;
     let dimension = dimension_c as usize;
     *not_implemented = 0u8; 
@@ -926,6 +1171,10 @@ unsafe fn projection_error_internal(
     projected_ptr: *const c_double, 
     error_val: &mut f64,
 ) {
+    // Safety:
+    // - `nodes_ptr` and `projected_ptr` must be valid for reading `dimension * num_nodes` doubles.
+    // - `num_nodes` and `dimension` must be accurate.
+    // - Relies on `get_node_val` safety.
     let mut diff_sq_sum = 0.0;
     let mut nodes_sq_sum = 0.0;
 
@@ -953,6 +1202,13 @@ unsafe fn can_reduce_internal(
     nodes_ptr: *const c_double, 
     projected_work_ptr: *mut c_double, 
 ) -> i32 { 
+    // Safety:
+    // - `nodes_ptr` must be valid for reading `dimension * num_nodes` doubles.
+    // - `projected_work_ptr` must be valid for writing `dimension * num_nodes` doubles.
+    // - `num_nodes` and `dimension` must be accurate.
+    // - Relies on `BEZ_reduce_pseudo_inverse`, `BEZ_elevate_nodes_curve`, and `projection_error_internal`
+    //   meeting their respective safety conditions.
+    // - `pb_nodes_vec` allocation must succeed.
     if num_nodes < 2 || num_nodes > 5 { 
         return -1; 
     }
@@ -1014,6 +1270,16 @@ pub unsafe extern "C" fn BEZ_full_reduce(
     reduced_nodes_output: *mut c_double, 
     not_implemented: *mut u8,
 ) {
+    // Safety:
+    // - `nodes` must be valid for reading `dimension * original_num_nodes` doubles.
+    // - `reduced_nodes_output` must be valid for reading/writing `dimension * original_num_nodes` doubles initially,
+    //   and subsequently for smaller sizes as reduction occurs.
+    // - `num_reduced_nodes_c` must be valid for writing 1 c_int.
+    // - `not_implemented` must be valid for writing 1 u8.
+    // - `num_nodes_c`, `dimension_c` must be non-negative and accurate.
+    // - Relies on `ptr::copy_nonoverlapping`, `can_reduce_internal`, `BEZ_reduce_pseudo_inverse`
+    //   meeting their respective safety conditions.
+    // - Allocations for `projected_work_vec` and `work_for_reduce_vec` must succeed.
     let original_num_nodes = num_nodes_c as usize;
     let dimension = dimension_c as usize;
 
@@ -1081,6 +1347,19 @@ pub unsafe extern "C" fn BEZ_compute_length(
     length: *mut c_double,
     error_val: *mut c_int, 
 ) {
+    // Safety:
+    // - `nodes` must be valid for reading `dimension * num_nodes` doubles.
+    // - `length` must be valid for writing 1 double.
+    // - `error_val` must be valid for writing 1 c_int.
+    // - `num_nodes_c`, `dimension_c` must be non-negative and accurate.
+    // - `hodograph_nodes_vec` allocation must succeed.
+    // - `rust_dqagse` requires its closure to be safe. The closure calls `BEZ_evaluate_multi`.
+    //   The safety of `BEZ_evaluate_multi` relies on its inputs being valid.
+    //   `integrand_nodes_data.as_ptr()` is from a `Vec`, so it's valid as long as the Vec lives.
+    //   The closure captures `integrand_nodes_data`, `integrand_num_nodes`, `integrand_dim`.
+    //   `evaluated_hodograph_vec` is created within the closure, valid. `s_arr` is valid.
+    //   So, the call to `BEZ_evaluate_multi` inside the closure is safe under these conditions.
+    // - `rust_dqagse` itself is unsafe and relies on valid function pointers and writable output pointers.
     let num_nodes = num_nodes_c as usize;
     let dimension = dimension_c as usize;
 
@@ -1168,8 +1447,6 @@ pub unsafe extern "C" fn BEZ_compute_length(
 }
 
 // Note: `curves_equal` and `subdivide_curve` from Fortran are not C-bound
-// and operate on the Fortran `CurveData` type. They are not directly
-// translated here as they are not part of the FFI interface.
-// If their logic is needed by other FFI functions, equivalent internal
-// Rust helpers would be created. For now, they appear to be for Fortran-side
-// usage or tests.
+// and operate on the Fortran `CurveData` type.
+// Rust equivalents `CurveData`, `curves_equal`, and `subdivide_curve` have been
+// added above for potential internal Rust usage or tests.

@@ -32,7 +32,7 @@ pub fn rust_dqagse<F>(
     // Outputs:
     result: &mut f64,
     abserr: &mut f64,
-    // neval: &mut i32, // `quadrature::Output` has `iterations` (u64)
+    // neval: &mut i32, // `quadrature::Output` for v0.1.2 has `num_evals: u32`
     ier: &mut c_int,
 ) where
     F: Fn(f64) -> f64,
@@ -61,25 +61,13 @@ pub fn rust_dqagse<F>(
     // We will pass `epsabs` and then check `epsrel` against the result.
     let output: Output = integrate(func, a, b, epsabs);
 
-    *result = output.integral; // Field name is `integral` not `estimate` in v0.1.2 Output
-    *abserr = output.error_estimate; // Field name is `error_estimate` not `error`
+    *result = output.integral; 
+    *abserr = output.error_estimate; 
+    // let current_neval = output.num_evals as i32; // If neval were to be returned
 
-    // *neval = output.num_evals as i32; // Field name is `num_evals`
-    // The `iterations` field used before was from a misremembered/different crate's API.
-    // quadrature::Output for 0.1.2: pub struct Output { pub integral: f64, pub error_estimate: f64, pub num_evals: u32 }
-    // It does not have `error_type` or `iterations` as previously assumed.
-    // This simplifies error checking significantly. The crate gives one error estimate.
-
-    // Determine status (ier)
-    // The Output struct for quadrature 0.1.2 is:
-    // pub struct Output {
-    //     pub integral: f64,
-    //     pub error_estimate: f64,
-    //     pub num_evals: u32,
-    // }
-    // There is no `error_type`. We must check both conditions.
-    // Variables achieved_abs_err, achieved_rel_err, and success were removed as they were unused.
-    // The logic is directly in success_check.
+    // Determine status (ier) based on the error estimate and requested tolerances.
+    // The `quadrature` crate (v0.1.2) itself does not return an error status like QUADPACK's `ier`.
+    // It provides an integral estimate and an error estimate. We must interpret these.
     
     // If the result is zero, the relative error check `(*abserr / *result).abs() <= epsrel` is problematic.
     // If *result is exactly 0.0, then success depends only on `*abserr <= epsabs`.

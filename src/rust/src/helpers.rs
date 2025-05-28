@@ -28,6 +28,13 @@ pub unsafe extern "C" fn BEZ_cross_product(
     vec1: *const c_double,
     result: *mut c_double,
 ) {
+    // Safety:
+    // - `vec0` must be a valid pointer to at least 2 `c_double` elements.
+    // - `vec1` must be a valid pointer to at least 2 `c_double` elements.
+    // - `result` must be a valid pointer to 1 `c_double` element.
+    // Dereferencing `vec0.offset(0)`, `vec0.offset(1)`, `vec1.offset(0)`, `vec1.offset(1)`
+    // is safe if `vec0` and `vec1` point to arrays of at least 2 doubles.
+    // Writing to `*result` is safe if `result` is a valid pointer.
     *result = (*vec0.offset(0) * *vec1.offset(1)) - (*vec0.offset(1) * *vec1.offset(0));
 }
 
@@ -40,6 +47,13 @@ pub unsafe extern "C" fn BEZ_bbox(
     bottom: *mut c_double,
     top: *mut c_double,
 ) {
+    // Safety:
+    // - If `num_nodes > 0`, `nodes` must be a valid pointer to at least `2 * num_nodes` `c_double` elements,
+    //   representing (x,y) coordinates.
+    // - `left`, `right`, `bottom`, `top` must be valid pointers to 1 `c_double` element each.
+    // Accessing `nodes.offset((2 * i) as isize)` and `nodes.offset((2 * i + 1) as isize)`
+    // is safe if `nodes` points to `2 * num_nodes` elements.
+    // Writing to `*left`, `*right`, `*bottom`, `*top` is safe if they are valid pointers.
     if num_nodes == 0 {
         *left = 0.0;
         *right = 0.0;
@@ -78,6 +92,10 @@ pub unsafe extern "C" fn BEZ_wiggle_interval(
     result: *mut c_double,
     success: *mut u8, // c_bool -> u8
 ) {
+    // Safety:
+    // - `result` must be a valid pointer to 1 `c_double` element.
+    // - `success` must be a valid pointer to 1 `u8` element.
+    // Writing to `*result` and `*success` is safe if they are valid pointers.
     *success = 1u8; // true as c_bool -> 1u8
     if -WIGGLE < value && value < WIGGLE {
         *result = 0.0;
@@ -98,6 +116,14 @@ pub unsafe extern "C" fn BEZ_contains_nd(
     point: *const c_double, 
     predicate: *mut u8, // c_bool -> u8
 ) {
+    // Safety:
+    // - If `num_nodes > 0`, `nodes` must be a valid pointer to at least `dimension * num_nodes` `c_double` elements.
+    // - `point` must be a valid pointer to at least `dimension` `c_double` elements.
+    // - `predicate` must be a valid pointer to 1 `u8` element.
+    // - `dimension` must be positive if `num_nodes > 0`.
+    // Accessing `nodes.offset((node_idx * dimension + dim_idx) as isize)` is safe under these conditions.
+    // Accessing `point.offset(dim_idx as isize)` is safe.
+    // Writing to `*predicate` is safe.
     if num_nodes == 0 {
         *predicate = 0u8; // false as c_bool -> 0u8
         return;
@@ -134,6 +160,11 @@ pub unsafe extern "C" fn BEZ_vector_close(
     vec2: *const c_double, 
     eps: c_double,
 ) -> u8 { // c_bool -> u8
+    // Safety:
+    // - `vec1` must be a valid pointer to at least `num_values` `c_double` elements.
+    // - `vec2` must be a valid pointer to at least `num_values` `c_double` elements.
+    // - `num_values` must accurately reflect the number of elements to compare.
+    // Accessing `vec1.offset(i as isize)` and `vec2.offset(i as isize)` is safe under these conditions.
     let mut s1_sq = 0.0;
     let mut s2_sq = 0.0;
     let mut diff_sq = 0.0;
@@ -168,12 +199,18 @@ pub extern "C" fn BEZ_in_interval(
     (start <= value && value <= end) as u8 // c_bool -> u8
 }
 
+/// # Safety
+/// - `points_ptr` must be a valid pointer to at least `2 * num_points` `f64` elements.
+/// - `num_points` must be non-negative and accurately reflect the number of (x,y) pairs.
+/// - `match_idx_0based` must be a valid pointer to an `i32`.
 unsafe fn min_index_rs(num_points: i32, points_ptr: *const f64, match_idx_0based: &mut i32) {
     if num_points == 0 {
         return;
     }
     *match_idx_0based = 0; 
     for i in 1..num_points {
+        // Safety: Accessing points_ptr offsets is safe if points_ptr is valid for 2*num_points elements
+        // and i is within 0..num_points.
         let x_i = *points_ptr.offset((2 * i) as isize);
         let x_match = *points_ptr.offset((2 * (*match_idx_0based)) as isize);
 
@@ -189,6 +226,11 @@ unsafe fn min_index_rs(num_points: i32, points_ptr: *const f64, match_idx_0based
     }
 }
 
+/// # Safety
+/// - `points_ptr` must be a valid pointer to at least `2 * num_points` `f64` elements, and must be mutable.
+/// - `num_points` must be non-negative and accurately reflect the number of (x,y) pairs.
+/// - `num_uniques_rs` must be a valid pointer to an `i32`.
+/// This function calls `min_index_rs` which has its own safety requirements.
 unsafe fn sort_in_place_rs(num_points: i32, points_ptr: *mut f64, num_uniques_rs: &mut i32) {
     if num_points == 0 {
         *num_uniques_rs = 0;
@@ -297,6 +339,15 @@ pub unsafe extern "C" fn BEZ_simple_convex_hull(
     polygon_size: *mut c_int,
     polygon: *mut c_double, 
 ) {
+    // Safety:
+    // - `points` must be valid for reading `2 * num_points` doubles if `num_points > 0`.
+    // - `polygon_size` must be a valid pointer to `c_int`.
+    // - `polygon` must be valid for writing `2 * num_points` doubles in the worst case (all points are unique and form the hull).
+    // - `num_points` must be non-negative.
+    // - `ptr::copy_nonoverlapping` calls require source and dest to be valid and non-overlapping for the given count.
+    // - `sort_in_place_rs` has its own safety requirements for `uniques_vec.as_mut_ptr()`.
+    // - `in_sorted_rs` has its own safety requirements.
+    // - Offsets into `uniques_vec` and `polygon` must be within bounds.
     if num_points == 0 {
         *polygon_size = 0;
         return;
@@ -473,6 +524,11 @@ unsafe fn is_separating_rs(
     polygon_size2: i32,
     polygon2_ptr: *const f64, 
 ) -> bool {
+    // Safety:
+    // - `edge_direction_ptr` must be valid for reading 2 `f64`s.
+    // - `polygon1_ptr` must be valid for reading `2 * polygon_size1` `f64`s if `polygon_size1 > 0`.
+    // - `polygon2_ptr` must be valid for reading `2 * polygon_size2` `f64`s if `polygon_size2 > 0`.
+    // - `polygon_size1` and `polygon_size2` must be non-negative.
     let edge_dx = *edge_direction_ptr.offset(0);
     let edge_dy = *edge_direction_ptr.offset(1);
 
@@ -523,6 +579,13 @@ pub unsafe extern "C" fn BEZ_polygon_collide(
     polygon2: *const c_double, 
     collision: *mut u8, // c_bool -> u8
 ) {
+    // Safety:
+    // - `polygon1` must be valid for reading `2 * polygon_size1` doubles if `polygon_size1 > 0`.
+    // - `polygon2` must be valid for reading `2 * polygon_size2` doubles if `polygon_size2 > 0`.
+    // - `collision` must be a valid pointer to a `u8`.
+    // - `polygon_size1` and `polygon_size2` must be non-negative.
+    // - `is_separating_rs` has its own safety requirements.
+    //   `edge_direction.as_ptr()` is safe as `edge_direction` is a local array.
     // Polygons need at least 1 point for BEZ_bbox, but SAT typically assumes >= 3 points for closed shapes.
     // Fortran code implies polygons are just sequences of points, edges are formed implicitly.
     // If size < 1, it's an error or no collision. If size 1 or 2, they are points/lines, not areas.
@@ -582,6 +645,11 @@ unsafe fn solve2x2_rs(
     x_val: &mut f64,
     y_val: &mut f64,
 ) {
+    // Safety:
+    // - `lhs_ptr` must be a valid pointer to at least 4 `f64` elements (for a 2x2 matrix).
+    //   Assumed column-major: [a, c, b, d] -> lhs[0]=a, lhs[1]=c, lhs[2]=b, lhs[3]=d
+    // - `rhs_ptr` must be a valid pointer to at least 2 `f64` elements.
+    // - `singular`, `x_val`, `y_val` must be valid mutable references.
     let a = *lhs_ptr.offset(0); 
     let c = *lhs_ptr.offset(1); 
     let b = *lhs_ptr.offset(2); 
@@ -591,7 +659,8 @@ unsafe fn solve2x2_rs(
     let f = *rhs_ptr.offset(1); 
 
     if c.abs() > a.abs() {
-        if c == 0.0 { 
+        if c == 0.0 { // Should not happen if c.abs() > a.abs() unless a is also 0 and non-finite.
+                      // Fortran does not check this inner condition. It relies on denominator check.
             *singular = true;
             return;
         }
@@ -604,8 +673,8 @@ unsafe fn solve2x2_rs(
         *y_val = (e - ratio * f) / denominator;
         *x_val = (f - d * *y_val) / c; 
         *singular = false;
-    } else {
-        if a == 0.0 {
+    } else { // a.abs() >= c.abs()
+        if a == 0.0 { // This means c must also be 0.0 if a.abs() >= c.abs().
             *singular = true;
             return;
         }
