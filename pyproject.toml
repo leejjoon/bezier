@@ -6,7 +6,9 @@ requires = [
     "ninja"
 ]
 build-backend = "mesonpy"
-backend-path = ["."]
+# backend-path = ["."] # This is sometimes used, but often not needed if mesonpy is installed in the environment.
+#                      # If you have this and mesonpy is NOT vendored in your repo, try removing it.
+# This is indeed the case. With backend-path, mesonpy is not found in nox environment.
 
 [project]
 name = "bezier"

@@ -45,12 +45,12 @@ DEPS = {
     "pycobertura": "pycobertura >= 3.3.2",
     "Pygments": "Pygments",
     "pylint": "pylint >= 3.3.1",  # Updated to match your example
-    "pytest": "pytest >= 8.3.3", # Updated to match your example
+    "pytest": "pytest >= 8.3.3",  # Updated to match your example
     "pytest-cov": "pytest-cov",
     "referencing": "referencing >= 0.35.1",
-    "scipy": "scipy >= 1.14.1", # Updated to match your example
-    "sympy": "sympy >= 1.13.3", # Updated to match your example
-    "seaborn": "seaborn >= 0.13.2", # Updated to match your example
+    "scipy": "scipy >= 1.14.1",  # Updated to match your example
+    "sympy": "sympy >= 1.13.3",  # Updated to match your example
+    "seaborn": "seaborn >= 0.13.2",  # Updated to match your example
 }
 BASE_DEPS = (DEPS["numpy"], DEPS["pytest"])
 NOX_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -118,20 +118,25 @@ def pypy_setup(local_deps, session):
 
 def install_bezier(session):
     # Install build dependencies first
-    session.install(
-        "meson-python",
-        "Cython",
-        "numpy",
-        "wheel"
-    )
+    session.install("meson-python", "Cython", "numpy", "wheel")
     # Build the package
-    session.run("python", "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel")
+    session.run(
+        "python",
+        "-m",
+        "pip",
+        "install",
+        "--upgrade",
+        "pip",
+        "setuptools",
+        "wheel",
+    )
     session.run("python", "-m", "pip", "install", ".", "--no-build-isolation")
 
 
 # update_generated session was removed as Meson handles Cython compilation.
 
 
+@nox.session(py=ALL_INTERPRETERS)
 def unit(session):
     interpreter = session.virtualenv.interpreter
     unit_deps = BASE_DEPS + (DEPS["sympy"],)
@@ -143,10 +148,10 @@ def unit(session):
     # Install build and test dependencies
     session.install("meson-python", "Cython", "numpy", "wheel")
     session.install(*local_deps)
-    
+
     # First install the package in regular mode
-    session.install(".", "--no-build-isolation")
-    
+    session.install(".")
+
     # Run pytest against the unit tests
     run_args = (
         ["python", "-m", "pytest"]
@@ -167,12 +172,12 @@ def cover(session):
     )
     session.install(*local_deps)
     # Install this package.
-    install_bezier(session) # env not needed
+    install_bezier(session)  # env not needed
     # Run pytest with coverage against the unit tests.
     run_args = ["python", "-m", "pytest", "--cov=bezier", "--cov=tests.unit"]
     run_args += session.posargs
     run_args += [get_path("tests", "unit")]
-    session.run(*run_args) # env not needed
+    session.run(*run_args)  # env not needed
 
 
 @nox.session(py=ALL_INTERPRETERS)
@@ -186,14 +191,14 @@ def functional(session):
     # Install all test dependencies.
     session.install(*local_deps)
     # Install this package.
-    install_bezier(session) # env not needed
+    install_bezier(session)  # env not needed
     # Run pytest against the functional tests.
     run_args = (
         ["python", "-m", "pytest"]
         + session.posargs
         + [get_path("tests", "functional")]
     )
-    session.run(*run_args) # env not needed
+    session.run(*run_args)  # env not needed
 
 
 @nox.session(py=DEFAULT_INTERPRETER)
@@ -201,7 +206,7 @@ def docs(session):
     # Install all dependencies.
     session.install(*DOCS_DEPS)
     # Install this package.
-    install_bezier(session) # BEZIER_NO_EXTENSION not needed
+    install_bezier(session)  # BEZIER_NO_EXTENSION not needed
     # Run the script for building docs.
     command = get_path("scripts", "build-docs.sh")
     session.run(command, external=True)
@@ -222,7 +227,7 @@ def get_doctest_args(session):
     return run_args
 
 
-def _macos_doctest_install(session): # install_prefix removed
+def _macos_doctest_install(session):  # install_prefix removed
     # 1. Install the ``delocate`` tool.
     session.install(DEPS["delocate"])
     # 2. Build the wheel from source.
@@ -265,7 +270,7 @@ def _macos_doctest_install(session): # install_prefix removed
     shutil.rmtree(repaired_dir, ignore_errors=True)
 
 
-def _windows_doctest_install(session): # install_prefix removed
+def _windows_doctest_install(session):  # install_prefix removed
     # 1. Install the ``delvewheel`` tool.
     session.install(DEPS["delvewheel"])
     # 2. Build the wheel from source.
@@ -316,7 +321,7 @@ def doctest(session):
     # Install this package.
     if IS_MACOS:
         # install_prefix = _cmake(session, BUILD_TYPE_RELEASE) # Removed
-        _macos_doctest_install(session) # install_prefix not passed
+        _macos_doctest_install(session)  # install_prefix not passed
     elif IS_LINUX:
         # For Linux, direct install of the wheel built by meson-python should work.
         # The script `nox-install-for-doctest-linux.sh` might need review
@@ -327,13 +332,24 @@ def doctest(session):
         # install_prefix = _cmake(session, BUILD_TYPE_RELEASE) # Removed
         # Instead of the script, let's try building and installing the wheel directly.
         basic_dir = tempfile.mkdtemp()
-        session.run("python", "-m", "pip", "wheel", ".", "--wheel-dir", basic_dir)
-        session.run("python", "-m", "pip", "install", "bezier", "--no-index", "--find-links", basic_dir)
+        session.run(
+            "python", "-m", "pip", "wheel", ".", "--wheel-dir", basic_dir
+        )
+        session.run(
+            "python",
+            "-m",
+            "pip",
+            "install",
+            "bezier",
+            "--no-index",
+            "--find-links",
+            basic_dir,
+        )
         shutil.rmtree(basic_dir, ignore_errors=True)
 
     elif IS_WINDOWS:
         # install_prefix = _cmake(session, BUILD_TYPE_RELEASE) # Removed
-        _windows_doctest_install(session) # install_prefix not passed
+        _windows_doctest_install(session)  # install_prefix not passed
     else:
         raise OSError("Unknown operating system")
 
@@ -360,9 +376,9 @@ def docs_images(session):
     # Install this package.
     if IS_MACOS:
         # install_prefix = _cmake(session, BUILD_TYPE_RELEASE) # Removed
-        _macos_doctest_install(session) # No install_prefix
+        _macos_doctest_install(session)  # No install_prefix
     else:
-        install_bezier(session) # No install_prefix
+        install_bezier(session)  # No install_prefix
     # Use custom RC-file for matplotlib.
     env = {
         # INSTALL_PREFIX_ENV: install_prefix, # Removed
