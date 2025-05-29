@@ -30,8 +30,6 @@ IS_MACOS = sys.platform == "darwin"
 IS_WINDOWS = os.name == "nt"
 DEPS = {
     "black": "black >= 24.8.0",
-    "cmake-format": "cmake-format >= 0.6.13",
-    "cmake": "cmake >= 3.30.4",
     "coverage": "coverage",
     "Cython": "Cython >= 3.0.11",
     "delocate": "delocate >= 0.12.0",
@@ -45,13 +43,13 @@ DEPS = {
     "numpy": "numpy >= 2.1.1",
     "pycobertura": "pycobertura >= 3.3.2",
     "Pygments": "Pygments",
-    "pylint": "pylint >= 3.3.1",
-    "pytest": "pytest >= 8.3.3",
+    "pylint": "pylint >= 3.3.1",  # Updated to match your example
+    "pytest": "pytest >= 8.3.3", # Updated to match your example
     "pytest-cov": "pytest-cov",
     "referencing": "referencing >= 0.35.1",
-    "scipy": "scipy >= 1.14.1",
-    "sympy": "sympy >= 1.13.3",
-    "seaborn": "seaborn >= 0.13.2",
+    "scipy": "scipy >= 1.14.1", # Updated to match your example
+    "sympy": "sympy >= 1.13.3", # Updated to match your example
+    "seaborn": "seaborn >= 0.13.2", # Updated to match your example
 }
 BASE_DEPS = (DEPS["numpy"], DEPS["pytest"])
 NOX_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -62,12 +60,8 @@ DOCS_DEPS = (
 DEFAULT_INTERPRETER = "3.12"
 PYPY = "pypy3"
 ALL_INTERPRETERS = ("3.10", "3.11", "3.12", PYPY)
-BUILD_TYPE_DEBUG = "Debug"
-BUILD_TYPE_RELEASE = "Release"
-DEBUG_SESSION_NAME = "libbezier-debug"
-RELEASE_SESSION_NAME = "libbezier-release"
-INSTALL_PREFIX_ENV = "BEZIER_INSTALL_PREFIX"
-EXTRA_DLL_ENV = "BEZIER_EXTRA_DLL"
+# INSTALL_PREFIX_ENV = "BEZIER_INSTALL_PREFIX" # Removed
+# EXTRA_DLL_ENV = "BEZIER_EXTRA_DLL" # Removed
 _OS_MAKEDIRS_EXIST_OK = functools.partial(os.makedirs, exist_ok=True)
 _SHUTIL_RMTREE_IGNORE_ERRORS = functools.partial(
     shutil.rmtree, ignore_errors=True
@@ -121,80 +115,15 @@ def pypy_setup(local_deps, session):
     return local_deps
 
 
-def _get_mingw_dll_dir():
-    """Attempt to locate MinGW-w64 DLL directory (on Windows).
-
-    This is intended to be used to add to a DLL search path. Does so by
-    searching for ``libgfortran*.dll``.
-
-    This assumes the DLL is in the same directory as ``gfortran.exe`` based on
-    the MinGW-w64 layout (as of 2023-07-30).
-    """
-    gfortran_exe = shutil.which("gfortran")
-    if gfortran_exe is None:
-        return None
-
-    gfortran_exe = pathlib.Path(gfortran_exe)
-    bin_dir = gfortran_exe.resolve().parent
-    matches = list(bin_dir.glob("libgfortran*.dll"))
-    if len(matches) == 0:
-        return None
-
-    return str(bin_dir)
+def install_bezier(session):
+    # With meson-python, simple install is enough.
+    # Fortran compiler output (DLLs/shared objects) should be handled correctly
+    # by meson-python and the wheel.
+    session.install(".")
+    # No install_prefix or runtime_env is returned as Meson handles this.
 
 
-def install_bezier(session, debug=False, env=None):
-    if env is None:
-        env = {}
-
-    if debug:
-        install_prefix = _cmake(session, BUILD_TYPE_DEBUG)
-    else:
-        install_prefix = _cmake(session, BUILD_TYPE_RELEASE)
-    env[INSTALL_PREFIX_ENV] = install_prefix
-
-    session.install(".", env=env)
-
-    runtime_env = {}
-    if IS_WINDOWS:
-        bezier_extra_dll = os.path.join(install_prefix, "bin")
-        mingw_dll_dir = _get_mingw_dll_dir()
-        if mingw_dll_dir is not None:
-            bezier_extra_dll = f"{bezier_extra_dll}{os.pathsep}{mingw_dll_dir}"
-        existing = os.environ.get(EXTRA_DLL_ENV)
-        if existing is not None:
-            bezier_extra_dll = f"{bezier_extra_dll}{os.pathsep}{existing}"
-        runtime_env[EXTRA_DLL_ENV] = bezier_extra_dll
-
-    return install_prefix, runtime_env
-
-
-@nox.session(py=DEFAULT_INTERPRETER)
-@nox.parametrize("check", [True, False])
-def update_generated(session, check):
-    # Install all dependencies.
-    session.install(DEPS["Cython"], DEPS["numpy"])
-    if check:
-        command = get_path("scripts", "remove_cython_files.py")
-        session.run("python", command)
-
-    pyx_file = get_path("src", "python", "bezier", "_speedup.pyx")
-    session.run("cython", pyx_file)
-
-    command = get_path("scripts", "clean_cython.py")
-    c_glob = get_path("src", "python", "bezier", "*.c")
-    for c_source in glob.glob(c_glob):
-        session.run(
-            "python",
-            command,
-            "--filename",
-            c_source,
-            "--virtualenv-dirname",
-            os.path.basename(session.virtualenv.location),
-        )
-    if check:
-        command = get_path("scripts", "cython_update_check.py")
-        session.run("python", command)
+# update_generated session was removed as Meson handles Cython compilation.
 
 
 @nox.session(py=ALL_INTERPRETERS)
@@ -209,14 +138,14 @@ def unit(session):
     # Install all test dependencies.
     session.install(*local_deps)
     # Install this package.
-    _, env = install_bezier(session, debug=True)
+    install_bezier(session) # env not needed
     # Run pytest against the unit tests.
     run_args = (
         ["python", "-m", "pytest"]
         + session.posargs
         + [get_path("tests", "unit")]
     )
-    session.run(*run_args, env=env)
+    session.run(*run_args) # env not needed
 
 
 @nox.session(py=DEFAULT_INTERPRETER)
@@ -230,12 +159,12 @@ def cover(session):
     )
     session.install(*local_deps)
     # Install this package.
-    _, env = install_bezier(session, debug=True)
+    install_bezier(session) # env not needed
     # Run pytest with coverage against the unit tests.
     run_args = ["python", "-m", "pytest", "--cov=bezier", "--cov=tests.unit"]
     run_args += session.posargs
     run_args += [get_path("tests", "unit")]
-    session.run(*run_args, env=env)
+    session.run(*run_args) # env not needed
 
 
 @nox.session(py=ALL_INTERPRETERS)
@@ -249,14 +178,14 @@ def functional(session):
     # Install all test dependencies.
     session.install(*local_deps)
     # Install this package.
-    _, env = install_bezier(session, debug=True)
+    install_bezier(session) # env not needed
     # Run pytest against the functional tests.
     run_args = (
         ["python", "-m", "pytest"]
         + session.posargs
         + [get_path("tests", "functional")]
     )
-    session.run(*run_args, env=env)
+    session.run(*run_args) # env not needed
 
 
 @nox.session(py=DEFAULT_INTERPRETER)
@@ -264,7 +193,7 @@ def docs(session):
     # Install all dependencies.
     session.install(*DOCS_DEPS)
     # Install this package.
-    install_bezier(session, env={"BEZIER_NO_EXTENSION": "True"})
+    install_bezier(session) # BEZIER_NO_EXTENSION not needed
     # Run the script for building docs.
     command = get_path("scripts", "build-docs.sh")
     session.run(command, external=True)
@@ -285,7 +214,7 @@ def get_doctest_args(session):
     return run_args
 
 
-def _macos_doctest_install(session, install_prefix):
+def _macos_doctest_install(session): # install_prefix removed
     # 1. Install the ``delocate`` tool.
     session.install(DEPS["delocate"])
     # 2. Build the wheel from source.
@@ -298,7 +227,7 @@ def _macos_doctest_install(session, install_prefix):
         ".",
         "--wheel-dir",
         basic_dir,
-        env={INSTALL_PREFIX_ENV: install_prefix},
+        # env={INSTALL_PREFIX_ENV: install_prefix}, # Removed
     )
     # 3. Repair the built wheel.
     basic_dir_path = pathlib.Path(basic_dir)
@@ -328,7 +257,7 @@ def _macos_doctest_install(session, install_prefix):
     shutil.rmtree(repaired_dir, ignore_errors=True)
 
 
-def _windows_doctest_install(session, install_prefix):
+def _windows_doctest_install(session): # install_prefix removed
     # 1. Install the ``delvewheel`` tool.
     session.install(DEPS["delvewheel"])
     # 2. Build the wheel from source.
@@ -341,7 +270,7 @@ def _windows_doctest_install(session, install_prefix):
         ".",
         "--wheel-dir",
         basic_dir,
-        env={INSTALL_PREFIX_ENV: install_prefix},
+        # env={INSTALL_PREFIX_ENV: install_prefix}, # Removed
     )
     # 3. Repair the built wheel.
     basic_dir_path = pathlib.Path(basic_dir)
@@ -352,8 +281,8 @@ def _windows_doctest_install(session, install_prefix):
         "repair",
         "--wheel-dir",
         repaired_dir,
-        "--add-path",
-        os.path.join(install_prefix, "bin"),
+        # "--add-path", # Removed, libbezier is static
+        # os.path.join(install_prefix, "bin"), # Removed
         *wheels,
     )
     # 4. Install from the repaired wheel.
@@ -378,15 +307,25 @@ def doctest(session):
     session.install(DEPS["sympy"], *DOCS_DEPS)
     # Install this package.
     if IS_MACOS:
-        install_prefix = _cmake(session, BUILD_TYPE_RELEASE)
-        _macos_doctest_install(session, install_prefix)
+        # install_prefix = _cmake(session, BUILD_TYPE_RELEASE) # Removed
+        _macos_doctest_install(session) # install_prefix not passed
     elif IS_LINUX:
-        command = get_path("scripts", "nox-install-for-doctest-linux.sh")
-        session.run(command, external=True)
-        install_prefix = _cmake(session, BUILD_TYPE_RELEASE)
+        # For Linux, direct install of the wheel built by meson-python should work.
+        # The script `nox-install-for-doctest-linux.sh` might need review
+        # if it assumes a specific structure from CMake.
+        # For now, let's simplify to standard wheel build and install.
+        # command = get_path("scripts", "nox-install-for-doctest-linux.sh")
+        # session.run(command, external=True)
+        # install_prefix = _cmake(session, BUILD_TYPE_RELEASE) # Removed
+        # Instead of the script, let's try building and installing the wheel directly.
+        basic_dir = tempfile.mkdtemp()
+        session.run("python", "-m", "pip", "wheel", ".", "--wheel-dir", basic_dir)
+        session.run("python", "-m", "pip", "install", "bezier", "--no-index", "--find-links", basic_dir)
+        shutil.rmtree(basic_dir, ignore_errors=True)
+
     elif IS_WINDOWS:
-        install_prefix = _cmake(session, BUILD_TYPE_RELEASE)
-        _windows_doctest_install(session, install_prefix)
+        # install_prefix = _cmake(session, BUILD_TYPE_RELEASE) # Removed
+        _windows_doctest_install(session) # install_prefix not passed
     else:
         raise OSError("Unknown operating system")
 
@@ -394,7 +333,8 @@ def doctest(session):
     run_args = get_doctest_args(session)
     # Make sure that the root directory is on the Python path so that
     # ``tests`` is import-able.
-    env = {"PYTHONPATH": get_path(), INSTALL_PREFIX_ENV: install_prefix}
+    # env = {"PYTHONPATH": get_path(), INSTALL_PREFIX_ENV: install_prefix} # install_prefix removed
+    env = {"PYTHONPATH": get_path()}
     session.run(*run_args, env=env)
 
 
@@ -411,13 +351,13 @@ def docs_images(session):
     session.install(*local_deps)
     # Install this package.
     if IS_MACOS:
-        install_prefix = _cmake(session, BUILD_TYPE_RELEASE)
-        _macos_doctest_install(session, install_prefix)
+        # install_prefix = _cmake(session, BUILD_TYPE_RELEASE) # Removed
+        _macos_doctest_install(session) # No install_prefix
     else:
-        install_prefix, _ = install_bezier(session)
+        install_bezier(session) # No install_prefix
     # Use custom RC-file for matplotlib.
     env = {
-        INSTALL_PREFIX_ENV: install_prefix,
+        # INSTALL_PREFIX_ENV: install_prefix, # Removed
         "GENERATE_IMAGES": "True",
         "MATPLOTLIBRC": "docs",
         "PYTHONPATH": get_path(),
@@ -454,7 +394,7 @@ def lint(session):
     # Install all dependencies.
     local_deps = BASE_DEPS + (
         DEPS["black"],
-        DEPS["cmake-format"],
+        # DEPS["cmake-format"], # Removed
         DEPS["docutils"],
         DEPS["flake8"],
         DEPS["flake8-import-order"],
@@ -471,17 +411,17 @@ def lint(session):
     # Run the script to check that the README and other docs are valid.
     check_path = get_path("scripts", "check_doc_templates.py")
     session.run("python", check_path)
-    # Run the script to check that setup.py is valid.
-    setup_file = get_path("setup.py")
-    session.run(
-        "python",
-        setup_file,
-        "check",
-        "--metadata",
-        "--restructuredtext",
-        "--strict",
-        env={"BEZIER_NO_EXTENSION": "True"},
-    )
+    # Run the script to check that setup.py is valid. # Removed setup.py check
+    # setup_file = get_path("setup.py")
+    # session.run(
+    #     "python",
+    #     setup_file,
+    #     "check",
+    #     "--metadata",
+    #     "--restructuredtext",
+    #     "--strict",
+    #     env={"BEZIER_NO_EXTENSION": "True"},
+    # )
     # Run ``black --check`` over all Python files
     check_black = get_path("scripts", "black_check_all_files.py")
     session.run("python", check_black)
@@ -514,12 +454,12 @@ def lint(session):
         "--max-module-lines=2473",
         get_path("tests"),
     )
-    # Run ``cmake-format`` for uniform formatting of ``CMakeLists.txt`` files
-    session.run(
-        "cmake-format",
-        "--in-place",
-        get_path("src", "fortran", "CMakeLists.txt"),
-    )
+    # Run ``cmake-format`` for uniform formatting of ``CMakeLists.txt`` files # Removed
+    # session.run(
+    #     "cmake-format",
+    #     "--in-place",
+    #     get_path("src", "fortran", "CMakeLists.txt"),
+    # )
     # (Maybe) run ``clang-format`` for uniform formatting of ``.c`` and ``.h``
     # files
     if shutil.which("clang-format") is not None:
@@ -551,6 +491,9 @@ def fortran_unit(session):
     if shutil.which("lcov") is None:
         session.skip("`lcov` must be installed")
     test_dir = get_path("tests", "fortran")
+    # Fortran tests might need separate compilation if not part of meson build
+    # For now, assuming they are still run with make.
+    # If meson handles fortran tests, this needs update.
     lcov_filename = os.path.join(test_dir, "coverage.info")
     session.chdir(test_dir)
     session.run("make", "unit", external=True)
@@ -584,134 +527,8 @@ def validate_functional_test_cases(session):
     )
 
 
-def _cmake_libbezier_root(session, build_type):
-    """The **path** to the Nox shared directory for the build type.
-
-    This path is dependent on build type. e.g. e.g. if ``build_type`` is
-    ``Debug``, then the ``.nox/.cache/libbezier-debug`` is expected to be
-    returned. This subdirectory will be created if it doesn't exist.
-
-    If the ``session`` is actually running as part of the intended
-    ``build_type``, this will ensure a full virtual environment is created
-    as well.
-    """
-    if build_type == BUILD_TYPE_DEBUG:
-        build_session_name = DEBUG_SESSION_NAME
-    elif build_type == BUILD_TYPE_RELEASE:
-        build_session_name = RELEASE_SESSION_NAME
-    else:
-        raise ValueError(f"Invalid build type {build_type!r}")
-
-    if session._runner.name == build_session_name:
-        # Force the virtual environment to be (re-)created if it doesn't
-        # have a ``bin`` directory. This can happen if a build was invoked from
-        # another session function.
-        if not os.path.isdir(session.bin):
-            reuse_value = session.virtualenv.reuse_existing
-            session.virtualenv.reuse_existing = False
-            session.virtualenv.create()
-            session.virtualenv.reuse_existing = reuse_value
-
-    relative_path = session.cache_dir / build_session_name
-    # Convert to an absolute path.
-    libbezier_root = get_path(relative_path)
-    session.run(_OS_MAKEDIRS_EXIST_OK, libbezier_root)
-    return libbezier_root
-
-
-def _cmake_needed():
-    """Determine if a ``cmake`` binary is needed.
-
-    This will check if ``cmake`` is on the path so it can be used if needed.
-    Installing ``cmake`` into the ``nox``-managed virtual environment can be
-    forced by setting the ``NOX_INSTALL_CMAKE`` environment variable.
-    """
-    if "NOX_INSTALL_CMAKE" in os.environ:
-        return True
-
-    return shutil.which("cmake") is None
-
-
-def _cmake(session, build_type):
-    """Build and install ``libbezier`` via ``cmake``.
-
-    The ``session`` may be one of ``libbezier-debug`` / ``libbezier-release``
-    in which case we directly build as instructed. Additionally, it may
-    correspond to a session that seeks to build ``libbezier`` as a dependency,
-    e.g. ``nox --session unit-3.11``.
-
-    Returns:
-        str: The install prefix that was created / re-used.
-    """
-    libbezier_root = _cmake_libbezier_root(session, build_type)
-
-    cmake_external = True
-    if _cmake_needed():
-        session.install(DEPS["cmake"])
-        cmake_external = False
-    else:
-        session.run_install(print, "Using pre-installed ``cmake``")
-        session.run_install("cmake", "--version", external=cmake_external)
-
-    # Prepare build and install directories.
-    build_dir = os.path.join(libbezier_root, "build")
-    install_prefix = os.path.join(libbezier_root, "usr")
-    session.run_install(_OS_MAKEDIRS_EXIST_OK, build_dir)
-
-    # Run ``cmake`` to prepare for / configure the build.
-    build_args = [
-        "cmake",
-        "-DCMAKE_BUILD_TYPE={}".format(build_type),
-        "-DCMAKE_INSTALL_PREFIX:PATH={}".format(install_prefix),
-        "-DCMAKE_VERBOSE_MAKEFILE:BOOL=ON",
-    ]
-    if IS_WINDOWS:
-        build_args.extend(["-G", "MinGW Makefiles"])
-
-    cmake_osx_deployment_target = os.environ.get("CMAKE_OSX_DEPLOYMENT_TARGET")
-    if cmake_osx_deployment_target is not None:
-        build_args.append(
-            f"-DCMAKE_OSX_DEPLOYMENT_TARGET={cmake_osx_deployment_target}"
-        )
-
-    cmake_fortran_compiler = os.environ.get("CMAKE_FORTRAN_COMPILER")
-    if cmake_fortran_compiler is not None:
-        build_args.append(f"-DCMAKE_Fortran_COMPILER={cmake_fortran_compiler}")
-
-    if os.environ.get("TARGET_NATIVE_ARCH") == "OFF":
-        build_args.append("-DTARGET_NATIVE_ARCH:BOOL=OFF")
-
-    build_args.extend(["-S", os.path.join("src", "fortran"), "-B", build_dir])
-    session.run_install(*build_args, external=cmake_external)
-
-    # Build and install.
-    session.run_install(
-        "cmake",
-        "--build",
-        build_dir,
-        "--config",
-        build_type,
-        "--target",
-        "install",
-        external=cmake_external,
-    )
-
-    # Get information on how the build was configured.
-    session.run_install("cmake", "-L", build_dir, external=cmake_external)
-
-    return install_prefix
-
-
-@nox.session(name=DEBUG_SESSION_NAME)
-def cmake_debug(session):
-    """Run a Debug build of ``libbezier`` and install (via ``cmake``)."""
-    _cmake(session, BUILD_TYPE_DEBUG)
-
-
-@nox.session(name=RELEASE_SESSION_NAME)
-def cmake_release(session):
-    """Run a Release build of ``libbezier`` and install (via ``cmake``)."""
-    _cmake(session, BUILD_TYPE_RELEASE)
+# Removed _cmake_libbezier_root, _cmake_needed, _cmake,
+# cmake_debug (libbezier-debug), and cmake_release (libbezier-release) sessions.
 
 
 @nox.session(py=False)

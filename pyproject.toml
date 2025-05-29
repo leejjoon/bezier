@@ -1,3 +1,56 @@
 [build-system]
-requires = ["numpy>=1.25.2", "setuptools>=70.0.0", "wheel>=0.43.0"]
-build-backend = "setuptools.build_meta:__legacy__"
+requires = [
+    "meson-python >= 0.15.0",
+    "cython >= 3.0.10",
+    "numpy >= 2.0.0",
+    "ninja"
+]
+build-backend = "mesonpy"
+backend-path = ["."]
+
+[project]
+name = "bezier"
+version = "2024.6.21"
+description = "Helper for B\u00e9zier Curves, Triangles, and Higher Order Objects"
+authors = [
+    {name = "Danny Hermes", email = "daniel.j.hermes@gmail.com"}
+]
+readme = "README.rst"
+license = {text = "Apache 2.0"}
+requires-python = ">=3.10"
+keywords = ["Geometry", "Curve", "Bezier", "Intersection", "Python"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+]
+dependencies = [
+    "numpy >= 2.0.0",
+]
+
+[project.optional-dependencies]
+full = [
+    "matplotlib >= 3.9.0",
+    "scipy >= 1.13.1",
+    "sympy >= 1.12.1"
+]
+
+[project.urls]
+Documentation = "https://bezier.readthedocs.io/"
+Changelog = "https://bezier.readthedocs.io/en/latest/releases/index.html"
+"Issue Tracker" = "https://github.com/dhermes/bezier/issues"
+Source = "https://github.com/dhermes/bezier"
+
+[tool.meson-python.args]
+setup = []
+compile = ["--verbose"]
+install = []
