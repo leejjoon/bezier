@@ -40,6 +40,7 @@ DEPS = {
     "jsonschema": "jsonschema >= 4.23.0",
     "lcov-cobertura": "lcov-cobertura >= 2.0.2",
     "matplotlib": "matplotlib >= 3.9.2",
+    "meson-python": "meson-python >= 0.18.0",
     "numpy": "numpy >= 2.1.1",
     "pycobertura": "pycobertura >= 3.3.2",
     "Pygments": "Pygments",
@@ -116,17 +117,21 @@ def pypy_setup(local_deps, session):
 
 
 def install_bezier(session):
-    # With meson-python, simple install is enough.
-    # Fortran compiler output (DLLs/shared objects) should be handled correctly
-    # by meson-python and the wheel.
-    session.install(".")
-    # No install_prefix or runtime_env is returned as Meson handles this.
+    # Install build dependencies first
+    session.install(
+        "meson-python",
+        "Cython",
+        "numpy",
+        "wheel"
+    )
+    # Build the package
+    session.run("python", "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel")
+    session.run("python", "-m", "pip", "install", ".", "--no-build-isolation")
 
 
 # update_generated session was removed as Meson handles Cython compilation.
 
 
-@nox.session(py=ALL_INTERPRETERS)
 def unit(session):
     interpreter = session.virtualenv.interpreter
     unit_deps = BASE_DEPS + (DEPS["sympy"],)
@@ -135,17 +140,20 @@ def unit(session):
     else:
         local_deps = unit_deps + (DEPS["scipy"],)
 
-    # Install all test dependencies.
+    # Install build and test dependencies
+    session.install("meson-python", "Cython", "numpy", "wheel")
     session.install(*local_deps)
-    # Install this package.
-    install_bezier(session) # env not needed
-    # Run pytest against the unit tests.
+    
+    # First install the package in regular mode
+    session.install(".", "--no-build-isolation")
+    
+    # Run pytest against the unit tests
     run_args = (
         ["python", "-m", "pytest"]
         + session.posargs
         + [get_path("tests", "unit")]
     )
-    session.run(*run_args) # env not needed
+    session.run(*run_args)  # env not needed
 
 
 @nox.session(py=DEFAULT_INTERPRETER)

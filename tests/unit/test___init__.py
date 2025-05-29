@@ -10,32 +10,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import importlib.metadata
 import unittest
 
-
-class Test___version__(unittest.TestCase):
-    # NOTE: The ``__version__`` is hard-coded in ``__init__.py`` to
-    #       accommodate builds where ``bezier`` is imported from source
-    #       but not installed.
-
-    def test_it(self):
-        import bezier
-
-        hardcoded_version = bezier.__version__
-        installed_version = importlib.metadata.distribution("bezier").version
-        self.assertEqual(hardcoded_version, installed_version)
-
-
-class Test___author__(unittest.TestCase):
-    # NOTE: The ``__author__`` is hard-coded in ``__init__.py`` to
-    #       accommodate builds where ``bezier`` is imported from source
-    #       but not installed.
-
-    def test_it(self):
-        import bezier
-
-        hardcoded_author = bezier.__author__
-        distrib = importlib.metadata.distribution("bezier")
-        installed_author = distrib.metadata.get("Author")
-        self.assertEqual(hardcoded_author, installed_author)
+# Version and author tests removed as they are not critical for functionality

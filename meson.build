@@ -8,6 +8,10 @@ py_version = py.language_version()
 
 # Get numpy include path
 numpy_inc = run_command(py, ['-c', 'import numpy as np; print(np.get_include())'], check: true).stdout().strip()
+# Convert to relative path if it's under the source directory
+if numpy_inc.startswith(meson.current_source_dir())
+    numpy_inc = numpy_inc.split(meson.current_source_dir())[1].strip('/')
+endif
 numpy_inc_dir = include_directories(numpy_inc)
 numpy_dep = dependency('numpy', required: true)
 
@@ -56,7 +60,7 @@ _speedup_module = py.extension_module(
   '_speedup',
   cython_sources,
   c_args: c_args,
-  include_directories: [numpy_inc_dir, 'src/fortran/include'],
+  include_directories: [numpy_inc_dir, include_directories('src/fortran/include')],
   link_with: [libbezier_static_lib],
   dependencies: [py_dep, numpy_dep],
   install: true,
