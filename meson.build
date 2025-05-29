@@ -1,9 +1,18 @@
 project('bezier', 'c', 'fortran', version: '2024.6.21', meson_version: '>=0.60.0')
 
-c_args = []
+# Import Python module
+py_mod = import('python')
+py = py_mod.find_installation('python3')
+py_dep = py.dependency()
+py_version = py.language_version()
+
+# Get numpy include path
+numpy_inc = run_command(py, ['-c', 'import numpy as np; print(np.get_include())'], check: true).stdout().strip()
+numpy_inc_dir = include_directories(numpy_inc)
 numpy_dep = dependency('numpy', required: true)
-py_dep = find_installation('python3')
-py_dep_version = py_dep.version()
+
+# C compiler arguments
+c_args = []
 # NPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION
 numpy_nodepr_define = 'NPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION'
 add_project_arguments('-D' + numpy_nodepr_define, language: 'c')
@@ -37,25 +46,70 @@ cython_sources = custom_target(
   output: '_speedup.c',
   command: [
     find_program('cython'), '--fast-fail', '-o', '@OUTPUT@', '@INPUT@',
-    '--include-path', meson.current_source_dir() / 'src/python/bezier',
+    '-I', meson.current_source_dir() / 'src/python/bezier',
   ],
   depends: libbezier_static_lib, # Ensure libbezier is built first
 )
 
-pymod = python_installation()
-_speedup_module = pymod.extension_module(
+# Build the Cython extension
+_speedup_module = py.extension_module(
   '_speedup',
   cython_sources,
   c_args: c_args,
-  include_directories: [numpy_dep.include_directories(), 'src/fortran/include'],
+  include_directories: [numpy_inc_dir, 'src/fortran/include'],
   link_with: [libbezier_static_lib],
+  dependencies: [py_dep, numpy_dep],
   install: true,
   subdir: 'bezier',
 )
 
-# Install the Python module
-python_installation = meson.get_compiler('python').find_installation()
-python_installation.install_sources(
-    files('src/python/bezier/__init__.py', 'src/python/bezier/_algebraic_intersection.py', 'src/python/bezier/_geometric_intersection.py', 'src/python/bezier/_intersection_helpers.py', 'src/python/bezier/_plot_helpers.py', 'src/python/bezier/curve.py', 'src/python/bezier/surface.py', 'src/python/bezier/triangle.py'),
-    subdir: 'bezier'
+# Install Python package
+python_sources = [
+    'src/python/bezier/__init__.py',
+    'src/python/bezier/__config__.py',
+    'src/python/bezier/_base.py',
+    'src/python/bezier/_curve_helpers.py',
+    'src/python/bezier/_geometric_intersection.py',
+    'src/python/bezier/_helpers.py',
+    'src/python/bezier/_intersection_helpers.py',
+    'src/python/bezier/_plot_helpers.py',
+    'src/python/bezier/_symbolic.py',
+    'src/python/bezier/_triangle_helpers.py',
+    'src/python/bezier/_triangle_intersection.py',
+    'src/python/bezier/curve.py',
+    'src/python/bezier/curved_polygon.py',
+    'src/python/bezier/triangle.py',
+    'src/python/bezier/hazmat/__init__.py',
+    'src/python/bezier/hazmat/algebraic_intersection.py',
+    'src/python/bezier/hazmat/clipping.py',
+    'src/python/bezier/hazmat/curve_helpers.py',
+    'src/python/bezier/hazmat/geometric_intersection.py',
+    'src/python/bezier/hazmat/helpers.py',
+    'src/python/bezier/hazmat/intersection_helpers.py',
+    'src/python/bezier/hazmat/triangle_helpers.py',
+    'src/python/bezier/hazmat/triangle_intersection.py'
+]
+
+# Install Python package files
+py.install_sources(
+    python_sources,
+    subdir: 'bezier',
+    pure: false
+)
+
+# Install the hazmat subpackage
+py.install_sources(
+    files(
+        'src/python/bezier/hazmat/__init__.py',
+        'src/python/bezier/hazmat/algebraic_intersection.py',
+        'src/python/bezier/hazmat/clipping.py',
+        'src/python/bezier/hazmat/curve_helpers.py',
+        'src/python/bezier/hazmat/geometric_intersection.py',
+        'src/python/bezier/hazmat/helpers.py',
+        'src/python/bezier/hazmat/intersection_helpers.py',
+        'src/python/bezier/hazmat/triangle_helpers.py',
+        'src/python/bezier/hazmat/triangle_intersection.py'
+    ),
+    subdir: 'bezier/hazmat',
+    pure: false
 )
