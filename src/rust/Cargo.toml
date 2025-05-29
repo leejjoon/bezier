@@ -9,6 +9,7 @@ crate-type = ["cdylib"]
 [dependencies]
 libc = "0.2"
 quadrature = "0.1.2"
+pyo3 = { version = "0.21.2", features = ["extension-module"] }
 
 [build-dependencies]
 cbindgen = "0.26.0"

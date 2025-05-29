@@ -199,6 +199,18 @@ pub extern "C" fn BEZ_in_interval(
     (start <= value && value <= end) as u8 // c_bool -> u8
 }
 
+// Internal (not FFI) helper function to get number of nodes for a Bezier triangle.
+pub fn get_num_nodes(degree: i32, dimension: i32) -> i32 {
+    if dimension == 2 { // Assuming this is for triangles specifically
+        (degree + 1) * (degree + 2) / 2
+    } else {
+        // Placeholder for other dimensions or error handling
+        // For curves, it's usually degree + 1
+        // This function was specifically requested for triangle node calculation in lib.rs
+        0 // Or panic, or return an error
+    }
+}
+
 /// # Safety
 /// - `points_ptr` must be a valid pointer to at least `2 * num_points` `f64` elements.
 /// - `num_points` must be non-negative and accurately reflect the number of (x,y) pairs.
@@ -638,7 +650,7 @@ pub unsafe extern "C" fn BEZ_polygon_collide(
 }
 
 #[allow(clippy::many_single_char_names)]
-unsafe fn solve2x2_rs(
+pub unsafe fn solve2x2_rs(
     lhs_ptr: *const f64, 
     rhs_ptr: *const f64, 
     singular: &mut bool, // Stays as Rust bool for internal function

@@ -805,13 +805,13 @@ unsafe fn newton_double_root_internal(
         jacobian_g_ptr.add(5).write(0.0); 
     }
     
-    modified_lhs.add(0).write(jacobian_g_ptr.read(0)*jacobian_g_ptr.read(0) + jacobian_g_ptr.read(1)*jacobian_g_ptr.read(1) + jacobian_g_ptr.read(2)*jacobian_g_ptr.read(2)); 
-    modified_lhs.add(1).write(jacobian_g_ptr.read(0)*jacobian_g_ptr.read(3) + jacobian_g_ptr.read(1)*jacobian_g_ptr.read(4) + jacobian_g_ptr.read(2)*jacobian_g_ptr.read(5)); 
-    modified_lhs.add(2).write(jacobian_g_ptr.read(3)*jacobian_g_ptr.read(0) + jacobian_g_ptr.read(4)*jacobian_g_ptr.read(1) + jacobian_g_ptr.read(5)*jacobian_g_ptr.read(2)); 
-    modified_lhs.add(3).write(jacobian_g_ptr.read(3)*jacobian_g_ptr.read(3) + jacobian_g_ptr.read(4)*jacobian_g_ptr.read(4) + jacobian_g_ptr.read(5)*jacobian_g_ptr.read(5)); 
+    modified_lhs.add(0).write(jacobian_g_ptr.add(0).read()*jacobian_g_ptr.add(0).read() + jacobian_g_ptr.add(1).read()*jacobian_g_ptr.add(1).read() + jacobian_g_ptr.add(2).read()*jacobian_g_ptr.add(2).read()); 
+    modified_lhs.add(1).write(jacobian_g_ptr.add(0).read()*jacobian_g_ptr.add(3).read() + jacobian_g_ptr.add(1).read()*jacobian_g_ptr.add(4).read() + jacobian_g_ptr.add(2).read()*jacobian_g_ptr.add(5).read()); 
+    modified_lhs.add(2).write(jacobian_g_ptr.add(3).read()*jacobian_g_ptr.add(0).read() + jacobian_g_ptr.add(4).read()*jacobian_g_ptr.add(1).read() + jacobian_g_ptr.add(5).read()*jacobian_g_ptr.add(2).read()); 
+    modified_lhs.add(3).write(jacobian_g_ptr.add(3).read()*jacobian_g_ptr.add(3).read() + jacobian_g_ptr.add(4).read()*jacobian_g_ptr.add(4).read() + jacobian_g_ptr.add(5).read()*jacobian_g_ptr.add(5).read()); 
 
-    modified_rhs.add(0).write(jacobian_g_ptr.read(0)*func_val_g[0] + jacobian_g_ptr.read(1)*func_val_g[1] + jacobian_g_ptr.read(2)*func_val_g[2]);
-    modified_rhs.add(1).write(jacobian_g_ptr.read(3)*func_val_g[0] + jacobian_g_ptr.read(4)*func_val_g[1] + jacobian_g_ptr.read(5)*func_val_g[2]);
+    modified_rhs.add(0).write(jacobian_g_ptr.add(0).read()*func_val_g[0] + jacobian_g_ptr.add(1).read()*func_val_g[1] + jacobian_g_ptr.add(2).read()*func_val_g[2]);
+    modified_rhs.add(1).write(jacobian_g_ptr.add(3).read()*func_val_g[0] + jacobian_g_ptr.add(4).read()*func_val_g[1] + jacobian_g_ptr.add(5).read()*func_val_g[2]);
 }
 
 /// # Safety
@@ -1581,7 +1581,7 @@ unsafe fn add_coincident_parameters_internal(
         if t_p1 == curve::LOCATE_MISS { t_p1 = 1.0; } else { t_p2 = 1.0; }
     } else { // s_p2 == curve::LOCATE_MISS (since one of them must be LOCATE_MISS from earlier checks)
         s_p2 = s_p1; s_p1 = 0.0;
-        if t_p1 == curve::LOCATE_MISS) { t_p1 = 0.0; } else { t_p2 = 0.0; }
+        if t_p1 == curve::LOCATE_MISS { t_p1 = 0.0; } else { t_p2 = 0.0; }
     }
 
     if (s_p1 - s_p2).abs() < MIN_INTERVAL_WIDTH && (t_p1 - t_p2).abs() < MIN_INTERVAL_WIDTH {
@@ -1748,9 +1748,9 @@ pub unsafe extern "C" fn BEZ_curve_intersections(
         num_nodes_first, nodes_first,
         num_nodes_second, nodes_second,
         &mut intersections_vec,
-        num_intersections_found, 
-        coincident,
-        status_code
+        &mut *num_intersections_found, 
+        &mut *coincident,
+        &mut *status_code
     );
 
     if *status_code != status::STATUS_SUCCESS {

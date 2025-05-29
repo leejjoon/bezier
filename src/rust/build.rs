@@ -24,14 +24,16 @@ fn main() {
     }
 
 
-    match cbindgen::generate(&crate_dir) {
-        Ok(bindings) => {
-            bindings.write_to_file(&output_file);
-        }
-        Err(err) => {
-            // Print the error to stderr for better diagnostics in cargo output
-            eprintln!("Unable to generate bindings: {:?}", err);
-            panic!("Unable to generate bindings: {:?}", err);
-        }
-    }
+    // Temporarily comment out cbindgen execution to isolate the lex error
+    // match cbindgen::generate(&crate_dir) {
+    //     Ok(bindings) => {
+    //         bindings.write_to_file(&output_file);
+    //     }
+    //     Err(err) => {
+    //         // Print the error to stderr for better diagnostics in cargo output
+    //         eprintln!("Unable to generate bindings: {:?}", err);
+    //         panic!("Unable to generate bindings: {:?}", err);
+    //     }
+    // }
+    println!("cargo:warning=cbindgen execution was temporarily skipped in build.rs.");
 }
